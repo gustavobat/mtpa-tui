@@ -1,17 +1,23 @@
+mod decryption;
+mod ui;
+mod util;
+
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{error::Error, io, num::ParseIntError};
+use decryption::decrypt_key;
+use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
     Frame, Terminal,
 };
+use util::decode_hex;
 
 use unicode_width::UnicodeWidthStr;
 
@@ -31,8 +37,8 @@ struct App<'a> {
     input: String,
     input_mode: InputMode,
     encrypted_messages: Vec<Vec<u8>>,
-    decrypted_messages: Vec<String>,
-    key: Vec<u8>,
+    decrypted_messages: Vec<Vec<u8>>,
+    key: Vec<Option<u8>>,
     position: (usize, usize),
 }
 
@@ -87,41 +93,37 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
     terminal.show_cursor()?;
 
-    if let Err(err) = res {
-        println!("{:?}", err)
-    }
+    //if let Err(err) = res {
+    //    println!("{:?}", err)
+    //}
 
     Ok(())
-}
-
-fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect()
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, app))?;
-
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Char('q') => return Ok(()),
                 KeyCode::Tab => app.toggle_tab(),
-                _ => {
-                    if let InputMode::Editing = app.input_mode {
-                        match key.code {
-                            KeyCode::Right => {
-                                match app.current_tab {
-                                    Tab::Encrypted => {
-                                        if app.position.1 < app.input.len() {
-                                            app.position.1 += 1
-                                        }
+                KeyCode::Right => app.toggle_tab(),
+                KeyCode::Left => app.toggle_tab(),
+                _ => match app.current_tab {
+                    Tab::Encrypted => match app.input_mode {
+                        InputMode::Normal => match key.code {
+                            KeyCode::Char('e') => app.input_mode = InputMode::Editing,
+                            _ => {}
+                        },
+                        InputMode::Editing => match key.code {
+                            KeyCode::Right => match app.current_tab {
+                                Tab::Encrypted => {
+                                    if app.position.1 < app.input.len() {
+                                        app.position.1 += 1
                                     }
-                                    Tab::Decryption => app.position.1 += 1,
                                 }
-                            }
+                                Tab::Decryption => app.position.1 += 1,
+                            },
                             KeyCode::Left => {
                                 if app.position.1 > 0 {
                                     app.position.1 -= 1
@@ -147,19 +149,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                 if app.input.len() % 2 == 0 {
                                     if let Ok(msg_bytes) = decode_hex(&app.input) {
                                         app.encrypted_messages.push(msg_bytes);
-                                        app.decrypted_messages.push(
-                                            "_".repeat(
-                                                app.encrypted_messages.last().unwrap().len(),
-                                            ),
-                                        );
-                                        if app.key.len()
-                                            < app.encrypted_messages.last().unwrap().len()
-                                        {
-                                            app.key.resize(
-                                                app.encrypted_messages.last().unwrap().len(),
-                                                0,
-                                            );
-                                        }
+                                        app.decrypted_messages.push(vec![
+                                            0;
+                                            app.encrypted_messages
+                                                .last()
+                                                .unwrap()
+                                                .len()
+                                        ]);
+                                        app.key = decrypt_key(&app.encrypted_messages);
                                         app.input_mode = InputMode::Normal;
                                     }
                                 }
@@ -170,16 +167,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                                 app.input_mode = InputMode::Normal;
                             }
                             _ => {}
-                        }
-                    } else {
-                        match key.code {
-                            KeyCode::Char('e') => app.input_mode = InputMode::Editing,
-                            KeyCode::Right => app.toggle_tab(),
-                            KeyCode::Left => app.toggle_tab(),
-                            _ => {}
-                        }
-                    }
-                }
+                        },
+                    },
+                    Tab::Decryption => todo!(),
+                },
             }
         }
     }
@@ -189,7 +180,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let size = f.size();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(5)
+        .margin(0)
         .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
         .split(size);
 
@@ -224,7 +215,7 @@ where
         .constraints(
             [
                 Constraint::Length(1),
-                Constraint::Length(3),
+                Constraint::Length(4),
                 Constraint::Min(1),
             ]
             .as_ref(),
@@ -263,6 +254,7 @@ where
             InputMode::Normal => Style::default(),
             InputMode::Editing => Style::default().fg(Color::Green),
         })
+        .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL).title("Add"));
     f.render_widget(input, chunks[1]);
     match app.input_mode {
@@ -308,16 +300,24 @@ where
         .split(area);
 
     let (msg, style) = match app.input_mode {
-        InputMode::Normal => (
-            vec![
-                Span::raw("Press "),
-                Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to exit, "),
-                Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to start editing."),
-            ],
-            Style::default().add_modifier(Modifier::RAPID_BLINK),
-        ),
+        InputMode::Normal => match app.encrypted_messages.is_empty() {
+            false => (
+                vec![
+                    Span::raw("Press "),
+                    Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::raw(" to exit, "),
+                    Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::raw(" to start editing."),
+                ],
+                Style::default().add_modifier(Modifier::RAPID_BLINK),
+            ),
+            true => (
+                vec![Span::raw(
+                    "Add encrypted messages before attempting to decrypt.",
+                )],
+                Style::default().add_modifier(Modifier::RAPID_BLINK),
+            ),
+        },
         InputMode::Editing => (
             vec![
                 Span::raw("Press "),
@@ -339,7 +339,17 @@ where
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+            let m_to_string: String = m
+                .iter()
+                .map(|byte| {
+                    if *byte > 31 && *byte < 127 {
+                        *byte as char
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m_to_string)))];
             ListItem::new(content)
         })
         .collect();
@@ -350,7 +360,10 @@ where
     let key_string = app
         .key
         .iter()
-        .map(|b| format!("{:02X}", b))
+        .map(|opt| match opt {
+            Some(byte) => format!("{:02X}", byte),
+            None => "_".to_string(),
+        })
         .collect::<Vec<String>>()
         .join("");
     let input = Paragraph::new(key_string.as_ref())

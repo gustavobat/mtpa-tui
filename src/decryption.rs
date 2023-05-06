@@ -67,6 +67,11 @@ pub fn decrypt_key(encrypted_messages: &Vec<Vec<u8>>) -> Vec<Option<u8>> {
     sorted_ciphertexts.sort_by(|a, b| a.len().cmp(&b.len()));
     let mut key: Vec<Option<u8>> = Vec::new();
 
+    let max_len = match sorted_ciphertexts.last() {
+        Some(text) => text.len(),
+        None => 0,
+    };
+
     while sorted_ciphertexts.len() > 1 {
         let partial_key = decrypt_key_chunk(&sorted_ciphertexts);
         sorted_ciphertexts.remove(0);
@@ -75,6 +80,7 @@ pub fn decrypt_key(encrypted_messages: &Vec<Vec<u8>>) -> Vec<Option<u8>> {
         });
         key.extend(partial_key);
     }
+    key.resize(max_len, None);
     return key;
 }
 

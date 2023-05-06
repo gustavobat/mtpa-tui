@@ -335,18 +335,21 @@ where
     f.render_widget(help_message, chunks[0]);
 
     let messages: Vec<ListItem> = app
-        .decrypted_messages
+        .encrypted_messages
         .iter()
         .enumerate()
         .map(|(i, m)| {
             let m_to_string: String = m
                 .iter()
-                .map(|byte| {
-                    if *byte > 31 && *byte < 127 {
-                        *byte as char
-                    } else {
-                        '_'
+                .enumerate()
+                .map(|(j, byte)| {
+                    if let Some(key_char) = app.key[j] {
+                        let c = *byte ^ key_char;
+                        if c.is_ascii() {
+                            return c as char;
+                        }
                     }
+                    return '_';
                 })
                 .collect();
             let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m_to_string)))];

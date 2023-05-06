@@ -53,11 +53,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
             match key.code {
                 KeyCode::Char('q') => return Ok(()),
                 KeyCode::Tab => app.toggle_tab(),
-                KeyCode::Right => app.toggle_tab(),
-                KeyCode::Left => app.toggle_tab(),
                 _ => match app.current_tab {
                     Tab::Encrypted => match app.input_mode {
                         InputMode::Normal => match key.code {
+                            KeyCode::Right => app.toggle_tab(),
+                            KeyCode::Left => app.toggle_tab(),
                             KeyCode::Char('e') => app.input_mode = InputMode::Editing,
                             _ => {}
                         },
@@ -115,7 +115,61 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             _ => {}
                         },
                     },
-                    Tab::Decryption => todo!(),
+                    Tab::Decryption => match app.input_mode {
+                        InputMode::Normal => match key.code {
+                            KeyCode::Char('e') => app.input_mode = InputMode::Editing,
+                            _ => {}
+                        },
+                        InputMode::Editing => match key.code {
+                            KeyCode::Right => match app.current_tab {
+                                Tab::Encrypted => {
+                                    if app.position.1 < app.input.len() {
+                                        app.position.1 += 1
+                                    }
+                                }
+                                Tab::Decryption => app.position.1 += 1,
+                            },
+                            KeyCode::Left => {
+                                if app.position.1 > 0 {
+                                    app.position.1 -= 1
+                                }
+                            }
+                            KeyCode::Up => {
+                                if app.position.0 > 0 {
+                                    app.position.0 -= 1
+                                }
+                            }
+                            KeyCode::Down => app.position.0 += 1,
+                            KeyCode::Char(c) => {
+                                let msg_id = app.position.0;
+                                let chars_before_msg = String::from(msg_id.to_string()).len() + 2;
+                                let key_pos = app.position.1 as i32 - chars_before_msg as i32;
+                                if key_pos >= 0
+                                    && key_pos < app.encrypted_messages[msg_id].len() as i32
+                                {
+                                    app.key[key_pos as usize] = Some(
+                                        c as u8 ^ app.encrypted_messages[msg_id][key_pos as usize],
+                                    );
+                                    app.position.1 += 1;
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                let msg_id = app.position.0;
+                                let chars_before_msg = String::from(msg_id.to_string()).len() + 2;
+                                let key_pos = app.position.1 as i32 - chars_before_msg as i32 - 1;
+                                if key_pos >= 0
+                                    && key_pos < app.encrypted_messages[msg_id].len() as i32
+                                {
+                                    app.key[key_pos as usize] = None;
+                                    app.position.1 -= 1;
+                                }
+                            }
+                            KeyCode::Esc => {
+                                app.input_mode = InputMode::Normal;
+                            }
+                            _ => {}
+                        },
+                    },
                 },
             }
         }

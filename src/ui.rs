@@ -183,7 +183,7 @@ where
                             return c as char;
                         }
                     }
-                    return '_';
+                    '_'
                 })
                 .collect();
             let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m_to_string)))];

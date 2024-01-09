@@ -5,7 +5,7 @@ use std::{
 
 // Return true if the byte that originated 'c' is a space or alphabetic
 fn is_space(c: u8) -> bool {
-    return c == 0x00 || c.is_ascii_alphabetic();
+    c == 0x00 || c.is_ascii_alphabetic()
 }
 
 // XOR two byte arrays
@@ -14,7 +14,7 @@ fn xor(a: &[u8], b: &[u8]) -> Vec<u8> {
 }
 
 // Return a set with the position of the spaces
-fn get_space_indices(bytes: &Vec<u8>) -> HashSet<usize> {
+fn get_space_indices(bytes: &[u8]) -> HashSet<usize> {
     bytes
         .iter()
         .enumerate()
@@ -55,16 +55,16 @@ fn decrypt_key_chunk(encrypted_messages: &Vec<&[u8]>) -> Vec<Option<u8>> {
             }
         }
     }
-    return key;
+    key
 }
 
 // Decrypt the key from a list of encrypted messages
-pub fn decrypt_key(encrypted_messages: &Vec<Vec<u8>>) -> Vec<Option<u8>> {
+pub fn decrypt_key(encrypted_messages: &[Vec<u8>]) -> Vec<Option<u8>> {
     let mut sorted_ciphertexts: Vec<&[u8]> = encrypted_messages
         .iter()
         .map(|text| text.as_slice())
         .collect();
-    sorted_ciphertexts.sort_by(|a, b| a.len().cmp(&b.len()));
+    sorted_ciphertexts.sort_by_key(|a| a.len());
     let mut key: Vec<Option<u8>> = Vec::new();
 
     let max_len = match sorted_ciphertexts.last() {
@@ -81,7 +81,7 @@ pub fn decrypt_key(encrypted_messages: &Vec<Vec<u8>>) -> Vec<Option<u8>> {
         key.extend(partial_key);
     }
     key.resize(max_len, None);
-    return key;
+    key
 }
 
 #[cfg(test)]

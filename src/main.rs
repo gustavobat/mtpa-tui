@@ -116,10 +116,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                         },
                     },
                     Tab::Decryption => match app.input_mode {
-                        InputMode::Normal => match key.code {
-                            KeyCode::Char('e') => app.input_mode = InputMode::Editing,
-                            _ => {}
-                        },
+                        InputMode::Normal => {
+                            if let KeyCode::Char('e') = key.code {
+                                app.input_mode = InputMode::Editing;
+                            }
+                        }
                         InputMode::Editing => match key.code {
                             KeyCode::Right => match app.current_tab {
                                 Tab::Encrypted => {
@@ -142,7 +143,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             KeyCode::Down => app.position.0 += 1,
                             KeyCode::Char(c) => {
                                 let msg_id = app.position.0;
-                                let chars_before_msg = String::from(msg_id.to_string()).len() + 2;
+                                let chars_before_msg = msg_id.to_string().len() + 2;
                                 let key_pos = app.position.1 as i32 - chars_before_msg as i32;
                                 if key_pos >= 0
                                     && key_pos < app.encrypted_messages[msg_id].len() as i32
@@ -155,7 +156,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
                             }
                             KeyCode::Backspace => {
                                 let msg_id = app.position.0;
-                                let chars_before_msg = String::from(msg_id.to_string()).len() + 2;
+                                let chars_before_msg = msg_id.to_string().len() + 2;
                                 let key_pos = app.position.1 as i32 - chars_before_msg as i32 - 1;
                                 if key_pos >= 0
                                     && key_pos < app.encrypted_messages[msg_id].len() as i32
